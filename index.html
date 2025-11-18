@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dino Game</title>
+<style>
+  :root{
+    --bg:#f7f7f7;
+    --ground-top:#8a3e12;
+    --ground-bottom:#5a260d;
+    --panel:#fff9e6;
+  }
+  html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+  body{background:linear-gradient(#ffffff, #f3f3f3 60%); display:flex; align-items:flex-start; justify-content:center; padding:18px;}
+
+  /* Game container */
+  .game-wrap{ width:100%; max-width:1200px; position:relative; background:var(--bg); border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,.06); overflow:hidden; }
+
+  /* Header row with title and score */
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:12px 18px; }
+  h1{ margin:0; font-size:18px; color:#222; letter-spacing:.5px; }
+  .score{
+    background: #fff; border-radius:8px; padding:6px 10px; border:2px solid rgba(0,0,0,.06);
+    font-weight:700; color:#222; box-shadow:0 2px 0 rgba(0,0,0,.05); font-family: "Courier New", monospace;
+  }
+
+  /* Game stage */
+  .stage{
+    position:relative; height:420px; background:linear-gradient(#fbfbfb,#f6f6f6 40%); border-top:1px solid rgba(0,0,0,.02);
+  }
+
+  /* Ground band */
+  .ground{
+    position:absolute; left:0; right:0; top:86px; height:22px;
+    background:linear-gradient(var(--ground-top), var(--ground-bottom));
+    box-shadow:0 6px 0 rgba(0,0,0,.25) inset; z-index:8;
+  }
+  /* lower pale band for visual */
+  .stage::after{
+    content:""; display:block; position:absolute; left:0; right:0; top:108px; height:320px;
+    background:linear-gradient(#f8fff8, rgba(200,255,200,0.15) 55%, rgba(255,255,255,0.8) 100%);
+    z-index:1;
+  }
+
+  /* Dino (left side) */
+  .dino{
+    position:absolute; left:36px; bottom:110px; width:52px; height:52px; z-index:10;
+    display:flex; align-items:center; justify-content:center; transform-origin:center bottom;
+  }
+  /* Dino body: small green rectangle with eye and stub tail via pseudo elements */
+  .dino .body{
+    width:44px; height:44px; border-radius:8px; background:linear-gradient(#76d47f,#3fb34f);
+    position:relative; box-shadow:0 2px 0 rgba(0,0,0,.08);
+  }
+  .dino .body::before{
+    content:""; position:absolute; right:6px; top:8px; width:6px; height:6px; background:#fff; border-radius:50%;
+    box-shadow:0 0 0 2px rgba(0,0,0,.06) inset;
+  }
+  .dino .body::after{
+    content:""; position:absolute; left:-8px; bottom:6px; width:14px; height:8px; background:linear-gradient(#4aa24a,#2c7d2c); border-radius:3px;
+    transform:rotate(-8deg);
+  }
+
+  /* Jump animation */
+  @keyframes jumpAnim {
+    0% { transform: translateY(0); }
+    30% { transform: translateY(-160px); }
+    60% { transform: translateY(-30px); }
+    100%{ transform: translateY(0); }
+  }
+  .dino.jump{ animation: jumpAnim 640ms cubic-bezier(.2,.7,.2,1) both; }
+
+  /* Cactus obstacles */
+  .obstacle{
+    position:absolute; bottom:110px; right:-40px; width:28px; height:52px; z-index:9;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .obstacle .body{
+    width:22px; height:38px; background:#5b5b5b; border-radius:3px; position:relative;
+    box-shadow:0 2px 0 rgba(0,0,0,.12);
+  }
+  .obstacle .body::before, .obstacle .body::after{
+    content:""; position:absolute; width:8px; height:12px; background:#5b5b5b;
+    left:-8px; top:6px; border-radius:3px;
+  }
+  .obstacle .body::after{ left:auto; right:-8px; top:10px; height:10px; }
+
+  /* slide animation controlled via inline style animation-duration */
+  @keyframes slideLeft{
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-130vw); }
+  }
+  .obstacle.play{ animation-name: slideLeft; animation-timing-function: linear; animation-fill-mode: forwards; }
+
+  /* Game Over panel */
+  .modal{
+    position:absolute; left:50%; transform:translateX(-50%); top:22%; z-index:40;
+    width:320px; padding:22px; border-radius:12px; background:var(--panel); border:3px dashed rgba(200,40,40, .45);
+    box-shadow:0 12px 30px rgba(0,0,0,.12); text-align:center; display:none;
+  }
+  .modal.show{ display:block; animation:pop 240ms ease; }
+  @keyframes pop{ from { transform:translate(-50%, -6px) scale(.98); opacity:0 } to { transform:translate(-50%,0) scale(1); opacity:1 } }
+  .modal h2{ margin:4px 0 10px; color:#d92b2b; font-family:'Comic Sans MS', system-ui; font-size:28px; }
+  .modal p{ margin:6px 0 16px; color:#333; font-weight:600; }
+  .btn{
+    display:inline-block; padding:10px 18px; background:#45b26b; color:white; border-radius:8px; text-decoration:none; cursor:pointer;
+    box-shadow:0 2px 0 rgba(0,0,0,.08);
+  }
+
+  /* small instructions bottom-left */
+  .instructions{ position:absolute; left:10px; bottom:8px; color:#666; font-size:13px; z-index:50; opacity:.9; }
+
+  /* paused overlay */
+  .overlay{
+    position:absolute; inset:0; background:rgba(255,255,255,0.01); pointer-events:none;
+  }
+
+  /* responsive tweaks */
+  @media (max-width:640px){
+    .stage{ height:360px; }
+    .dino{ left:18px; }
+  }
+</style>
+</head>
+<body>
+  <div class="game-wrap" id="gameWrap">
+    <div class="topbar">
+      <h1>Dino Run</h1>
+      <div class="score" id="scoreBox">Score: 0</div>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="ground"></div>
+
+      <!-- Dino -->
+      <div class="dino" id="dino" aria-hidden="true">
+        <div class="body"></div>
+      </div>
+
+      <!-- obstacles appended by JS -->
+      <div id="obstaclesContainer"></div>
+
+      <!-- Game over modal -->
+      <div class="modal" id="modal">
+        <h2>Game Over!</h2>
+        <p id="finalScore">Final Score: 0</p>
+        <div><button class="btn" id="restartBtn">Play Again</button></div>
+      </div>
+
+      <div class="instructions">Press <strong>Space</strong> or <strong>↑</strong> to jump</div>
+      <div class="overlay"></div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const dino = document.getElementById('dino');
+  const stage = document.getElementById('stage');
+  const obstaclesContainer = document.getElementById('obstaclesContainer');
+  const scoreBox = document.getElementById('scoreBox');
+  const modal = document.getElementById('modal');
+  const finalScore = document.getElementById('finalScore');
+  const restartBtn = document.getElementById('restartBtn');
+
+  let score = 0;
+  let spawnTimer = null;
+  let collisionTimer = null;
+  let running = false;
+  let obstacleSpeed = 4.6;
+
+  // -------------------------
+  // START GAME
+  // -------------------------
+  function startGame(){
+    clearAll();
+    score = 0;
+    updateScoreUI();
+    modal.classList.remove('show');
+    running = true;
+
+    obstacleSpeed = 4.6;
+
+    scheduleSpawn(600);
+    collisionTimer = setInterval(checkCollisions, 18);
+    window.focus();
+  }
+
+  function clearAll(){
+    running = false;
+    if(spawnTimer) clearTimeout(spawnTimer);
+    if(collisionTimer) clearInterval(collisionTimer);
+
+    obstaclesContainer.innerHTML = "";
+  }
+
+  function updateScoreUI(){
+    scoreBox.textContent = "Score: " + score;
+  }
+
+  // -------------------------
+  // SPAWN OBSTACLES
+  // -------------------------
+  function scheduleSpawn(delay){
+    spawnTimer = setTimeout(()=>{
+      if(!running) return;
+      createObstacle();
+      const next = randomRange(900, 2000);
+      scheduleSpawn(next);
+    }, delay);
+  }
+
+  function createObstacle(){
+    const wrap = document.createElement('div');
+    wrap.className = 'obstacle';
+
+    const body = document.createElement('div');
+    body.className = 'body';
+    wrap.appendChild(body);
+
+    wrap.passed = false;   // <-- IMPORTANT: track if score given
+
+    obstaclesContainer.appendChild(wrap);
+
+    const duration = obstacleSpeed.toFixed(2);
+    wrap.classList.add('play');
+    wrap.style.animationDuration = duration + 's';
+
+    wrap.addEventListener("animationend", ()=> wrap.remove());
+  }
+
+  // -------------------------
+  // DINO JUMP
+  // -------------------------
+  let isJumping = false;
+  function jump(){
+    if(!running) startGame();
+    if(isJumping) return;
+
+    isJumping = true;
+    dino.classList.add('jump');
+
+    setTimeout(()=>{
+      dino.classList.remove('jump');
+      isJumping = false;
+    }, 660);
+  }
+
+  window.addEventListener('keydown',(e)=>{
+    if(e.code==="Space" || e.code==="ArrowUp") {
+      e.preventDefault();
+      jump();
+    }
+    if(!running && e.code==="Enter"){
+      startGame();
+    }
+  });
+
+  stage.addEventListener("pointerdown", ()=> jump());
+
+  // -------------------------
+  // COLLISION + SCORE LOGIC
+  // -------------------------
+  function checkCollisions(){
+    if(!running) return;
+
+    const dRect = dino.getBoundingClientRect();
+    const obstacles = obstaclesContainer.querySelectorAll(".obstacle");
+
+    obstacles.forEach(ob => {
+      const oRect = ob.getBoundingClientRect();
+
+      // Collision
+      if(rectsOverlap(shrink(dRect,8), shrink(oRect,4))){
+        gameOver();
+      }
+
+      // SCORING: obstacle passed dino
+      if(!ob.passed && oRect.right < dRect.left){
+        ob.passed = true;     // score only once
+        score++;
+        updateScoreUI();
+      }
+    });
+  }
+
+  function gameOver(){
+    running = false;
+
+    const obstacles = obstaclesContainer.querySelectorAll(".obstacle");
+    obstacles.forEach(ob => ob.style.animationPlayState="paused");
+
+    if(spawnTimer) clearTimeout(spawnTimer);
+    if(collisionTimer) clearInterval(collisionTimer);
+
+    finalScore.textContent = "Final Score: " + score;
+    modal.classList.add("show");
+  }
+
+  restartBtn.addEventListener("click", ()=> startGame());
+
+  // -------------------------
+  // UTILS
+  // -------------------------
+  function rectsOverlap(a,b){
+    return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  }
+  function shrink(r,p){
+    return { left:r.left+p, top:r.top+p, right:r.right-p, bottom:r.bottom-p };
+  }
+  function randomRange(a,b){
+    return Math.floor(Math.random()*(b-a+1))+a;
+  }
+
+})();
+</script>
+</body>
+</html>
